@@ -15,6 +15,10 @@ export class UrukaisClient {
     this.model = settings.model;
   }
 
+  /**
+   * Autocompletado inline: envía prefijo + sufijo y devuelve solo la parte nueva.
+   * Usa enable_thinking=false para que el modelo no malgaste tokens razonando.
+   */
   async inlineComplete(
     prefix: string,
     suffix: string,
@@ -33,6 +37,7 @@ export class UrukaisClient {
       extra_body: {
         min_p: settings.inlineCompletion.minP,
         repetition_penalty: settings.inlineCompletion.repetitionPenalty,
+        chat_template_kwargs: { enable_thinking: false },
       },
       stop: ["```"],
     });
@@ -41,6 +46,10 @@ export class UrukaisClient {
     return this.cleanCompletion(raw);
   }
 
+  /**
+   * Chat general (para panel de chat y comandos).
+   * Aquí SÍ dejamos thinking activado: ayuda en tareas de explicar/refactorizar.
+   */
   async chat(messages: ChatMessage[]): Promise<string> {
     const response = await this.client.chat.completions.create({
       model: this.model,
@@ -53,6 +62,9 @@ export class UrukaisClient {
     return response.choices[0]?.message?.content ?? "";
   }
 
+  /**
+   * Construye el prompt FIM (fill-in-the-middle) para autocompletado.
+   */
   private buildInlinePrompt(
     prefix: string,
     suffix: string,
