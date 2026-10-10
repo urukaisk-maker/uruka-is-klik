@@ -15,7 +15,7 @@ fi
 
 llama-server \
   -m "$MODEL_PATH" \
-  -a MiniCPM5-2B \
+  -a "$(basename "$MODEL_PATH" .gguf)" \
   --port "$PORT" \
   -c "$CTX" \
   -t "$THREADS" \
