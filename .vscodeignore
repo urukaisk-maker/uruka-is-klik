@@ -1,11 +1,32 @@
-.vscode/**
+# Código fuente (no necesario en runtime)
 src/**
+tsconfig.json
+
+# Tests
 test/**
+**/*.test.ts
+
+# Documentación y scripts de desarrollo
 docs/**
-server/**
 scripts/**
 docker/**
 prompts/**
-tsconfig.json
+server/**
+webview/**
+
+# Metadatos del repo
 .gitignore
+.vscode/**
+.github/**
+
+# Archivos generados
 **/*.map
+*.vsix
+
+# Basura de editores
+nano.*.save
+*.swp
+*~
+
+# Archivos locales de prueba
+test.py
