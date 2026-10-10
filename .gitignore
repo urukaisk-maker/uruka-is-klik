@@ -1,13 +1,23 @@
+# Dependencias
 node_modules/
+
+# Build
 out/
 *.vsix
+
+# Entorno
 .env
 .vscode-test/
-node_modules/
-out/
-*.vsix
 .venv/
 
+# Basura de editores
+nano.*.save
+*.swp
+*~
+
+# Clones accidentales
 llama.cpp/
 llama.cpp-src/
+
+# Archivos de prueba locales
 test.py
