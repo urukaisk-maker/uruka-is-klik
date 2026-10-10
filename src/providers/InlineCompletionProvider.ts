@@ -10,6 +10,7 @@ export class InlineCompletionProvider
   private client = new UrukaisClient();
   private lastRequest = 0;
 
+  // Cuántos caracteres de contexto ya enviados al servidor (para el log)
   async provideInlineCompletionItems(
     document: vscode.TextDocument,
     position: vscode.Position,
@@ -19,7 +20,7 @@ export class InlineCompletionProvider
     const settings = Settings.get();
     if (!settings.inlineCompletion.enabled) return [];
 
-    // Throttle mínimo entre peticiones para no saturar la CPU
+    // Throttle: no más de una petición cada debounceMs
     const now = Date.now();
     if (now - this.lastRequest < settings.inlineCompletion.debounceMs) {
       return [];
@@ -31,20 +32,53 @@ export class InlineCompletionProvider
       position
     );
 
+    // Ignora si el usuario está en medio de un token (evita llamadas inútiles)
+    const line = document.lineAt(position.line).text;
+    const charBefore = position.character > 0 ? line[position.character - 1] : "";
+    const isMidWord = /[\w$]/.test(charBefore);
+
     try {
-      const completion = await this.client.inlineComplete(
+      // Petición rápida: pocos tokens, respuesta veloz.
+      const fastMax = isMidWord ? 16 : 40;
+      const fast = await this.client.inlineComplete(
         prefix,
         suffix,
-        document.languageId
+        document.languageId,
+        fastMax
       );
-      if (!completion || token.isCancellationRequested) return [];
+      if (!fast || token.isCancellationRequested) return [];
 
-      return [
+      const items: vscode.InlineCompletionItem[] = [
         new vscode.InlineCompletionItem(
-          completion,
+          fast,
           new vscode.Range(position, position)
         ),
       ];
+
+      // Segunda variante más larga solo si la primera fue corta (probablemente
+      // incompleta) y el usuario no está a mitad de palabra.
+      if (!isMidWord && fast.length < 80) {
+        try {
+          const long = await this.client.inlineComplete(
+            prefix,
+            suffix,
+            document.languageId,
+            settings.inlineCompletion.maxTokens
+          );
+          if (long && long !== fast && !token.isCancellationRequested) {
+            items.push(
+              new vscode.InlineCompletionItem(
+                long,
+                new vscode.Range(position, position)
+              )
+            );
+          }
+        } catch {
+          // Si la segunda falla, seguimos con la primera
+        }
+      }
+
+      return items;
     } catch (err) {
       logger.error("Inline completion falló", err);
       return [];

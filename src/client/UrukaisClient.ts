@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { Settings } from "../config/Settings";
 import { ChatMessage } from "./types";
+import { getLanguagePrompt } from "../context/LanguagePrompts";
 
 export class UrukaisClient {
   private client: OpenAI;
@@ -16,30 +17,34 @@ export class UrukaisClient {
   }
 
   /**
-   * Autocompletado inline: envía prefijo + sufijo y devuelve solo la parte nueva.
-   * Usa enable_thinking=false para que el modelo no malgaste tokens razonando.
+   * Autocompletado inline. Devuelve SIEMPRE un string (puede estar vacío).
    */
   async inlineComplete(
     prefix: string,
     suffix: string,
-    languageId: string
+    languageId: string,
+    maxTokensOverride?: number
   ): Promise<string> {
     const settings = Settings.get();
     const prompt = this.buildInlinePrompt(prefix, suffix, languageId);
+    const languagePrompt = getLanguagePrompt(languageId);
 
     const response = await this.client.chat.completions.create({
       model: this.model,
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: settings.inlineCompletion.maxTokens,
+      messages: [
+        { role: "system", content: languagePrompt.instruction },
+        { role: "user", content: prompt },
+      ],
+      max_tokens: maxTokensOverride ?? settings.inlineCompletion.maxTokens,
       temperature: settings.inlineCompletion.temperature,
       top_p: settings.inlineCompletion.topP,
-      // @ts-ignore — extra_body para llama.cpp / vLLM / SGLang
+      // @ts-ignore
       extra_body: {
         min_p: settings.inlineCompletion.minP,
         repetition_penalty: settings.inlineCompletion.repetitionPenalty,
         chat_template_kwargs: { enable_thinking: false },
       },
-      stop: ["```"],
+      stop: languagePrompt.stopTokens ?? ["```"],
     });
 
     const raw = response.choices[0]?.message?.content ?? "";
@@ -47,8 +52,7 @@ export class UrukaisClient {
   }
 
   /**
-   * Chat general (para panel de chat y comandos).
-   * Aquí SÍ dejamos thinking activado: ayuda en tareas de explicar/refactorizar.
+   * Chat general. Thinking activado (útil para explicar/refactorizar).
    */
   async chat(messages: ChatMessage[]): Promise<string> {
     const response = await this.client.chat.completions.create({
@@ -63,8 +67,25 @@ export class UrukaisClient {
   }
 
   /**
-   * Construye el prompt FIM (fill-in-the-middle) para autocompletado.
+   * Ping trivial para precalentar el modelo. Ignora el resultado.
    */
+  async warmup(): Promise<void> {
+    try {
+      await this.client.chat.completions.create({
+        model: this.model,
+        messages: [{ role: "user", content: "hola" }],
+        max_tokens: 1,
+        // @ts-ignore
+        extra_body: {
+          min_p: 0.0,
+          chat_template_kwargs: { enable_thinking: false },
+        },
+      });
+    } catch {
+      // Silencioso: si falla, la primera petición real lo detectará.
+    }
+  }
+
   private buildInlinePrompt(
     prefix: string,
     suffix: string,
@@ -75,8 +96,6 @@ export class UrukaisClient {
 
     return [
       `Lenguaje: ${languageId}`,
-      `Completa el código que falta en el marcador <fim>.`,
-      `Responde SOLO con el código, sin explicaciones, sin markdown, sin fences.`,
       ``,
       `<prefix>`,
       recentPrefix,
@@ -86,7 +105,7 @@ export class UrukaisClient {
       recentSuffix,
       `</suffix>`,
       ``,
-      `Código a insertar (solo el código):`,
+      `Código a insertar en <fim>:`,
     ].join("\n");
   }
 
